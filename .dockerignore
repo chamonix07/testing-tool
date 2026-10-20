@@ -1,0 +1,12 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+downloads/
+.git/
+.gitignore
+.system_generated/
+scratch/
+settings.json
