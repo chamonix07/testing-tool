@@ -16,6 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import config
@@ -31,6 +32,14 @@ def sanitize_archive_name(name: str) -> str:
     return cleaned or "file"
 
 app = FastAPI(title="IN DONLOtiN", description="Universal Media Downloader powered by IN")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 downloads_dir = config.load_settings().get("output_dir", os.path.abspath("downloads"))
 try:
@@ -103,17 +112,27 @@ class BatchDeleteFolderRequest(BaseModel):
 @app.middleware("http")
 async def vercel_path_fix_middleware(request: Request, call_next):
     """Ensure Vercel serverless function rewrites preserve the original client path."""
-    matched = request.headers.get("x-matched-path")
-    path = request.scope.get("path", "")
+    param_path = request.query_params.get("__path__")
+    matched = request.headers.get("x-vercel-matched-path") or request.headers.get("x-matched-path")
     
-    if matched and not matched.startswith("/api/index"):
-        request.scope["path"] = matched
-    elif path in ["/api/index.py", "/api/index", "/api", "/api/"]:
+    target_path = None
+    if param_path and not param_path.startswith("/api/index"):
+        target_path = "/" + param_path.lstrip("/")
+    elif matched and not matched.startswith("/api/index"):
+        target_path = "/" + matched.lstrip("/")
+    
+    current_path = request.scope.get("path", "")
+    if target_path:
+        target_path = target_path.split("?")[0]
+        if len(target_path) > 1 and target_path.endswith("/"):
+            target_path = target_path.rstrip("/")
+        request.scope["path"] = target_path
+    elif current_path in ["/api/index.py", "/api/index", "/api", "/api/"]:
         request.scope["path"] = "/"
-    elif path.startswith("/api/index.py/"):
-        request.scope["path"] = path[len("/api/index.py"):]
-    elif path.startswith("/api/index/"):
-        request.scope["path"] = path[len("/api/index"):]
+    elif current_path.startswith("/api/index.py/"):
+        request.scope["path"] = current_path[len("/api/index.py"):]
+    elif current_path.startswith("/api/index/"):
+        request.scope["path"] = current_path[len("/api/index"):]
 
     return await call_next(request)
 

@@ -1462,15 +1462,40 @@ async function startBatchDownload() {
                             `;
                         }
                         if (actionCell) {
-                            const escapedPath = (data.folder_path || '').replace(/\\/g, '\\\\');
-                            actionCell.innerHTML = `
-                                <div class="flex items-center gap-2">
-                                    <span class="truncate max-w-[110px] font-semibold text-xs text-on-surface" title="${data.folder_name}">${data.folder_name}</span>
-                                    <button type="button" onclick="openSystemFolder('${escapedPath}')" class="p-1 px-2 rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 text-secondary text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0" title="Buka Folder di Windows Explorer">
-                                        <span class="material-symbols-outlined text-sm">folder_open</span>
-                                    </button>
-                                </div>
-                            `;
+                            if (isMobileDevice()) {
+                                actionCell.innerHTML = `
+                                    <div class="flex items-center gap-2">
+                                        <span class="truncate max-w-[110px] font-semibold text-xs text-on-surface" title="${data.folder_name}">${data.folder_name}</span>
+                                        <span class="p-1 px-2 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-semibold flex items-center gap-1 shrink-0" title="Tersimpan di Penyimpanan HP">
+                                            <span class="material-symbols-outlined text-sm">smartphone</span>
+                                        </span>
+                                    </div>
+                                `;
+                                saveToMobileVault({
+                                    id: "mob_" + Date.now() + "_" + i,
+                                    folder_name: data.folder_name || ("batch_" + i),
+                                    title: item.title || data.folder_name,
+                                    author: item.author || "Creator",
+                                    platform: item.platform_id || "media",
+                                    created_str: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+                                    created_time: Date.now() / 1000,
+                                    thumbnail: item.thumbnail,
+                                    file_count: 1,
+                                    total_files: 1,
+                                    is_mobile_vault: true,
+                                    files: []
+                                });
+                            } else {
+                                const escapedPath = (data.folder_path || '').replace(/\\/g, '\\\\');
+                                actionCell.innerHTML = `
+                                    <div class="flex items-center gap-2">
+                                        <span class="truncate max-w-[110px] font-semibold text-xs text-on-surface" title="${data.folder_name}">${data.folder_name}</span>
+                                        <button type="button" onclick="openSystemFolder('${escapedPath}')" class="p-1 px-2 rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 text-secondary text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0" title="Buka Folder di Windows Explorer">
+                                            <span class="material-symbols-outlined text-sm">folder_open</span>
+                                        </button>
+                                    </div>
+                                `;
+                            }
                         }
                     }
                 } else {
@@ -2171,6 +2196,15 @@ function openSystemFolderByIndex(index) {
 }
 
 async function openSystemFolder(folderPath = null) {
+    if (isMobileDevice()) {
+        showToast(
+            currentLang === "id"
+                ? "Fitur Buka di Explorer khusus PC/Desktop. Di perangkat HP, media tersimpan otomatis di folder Download / Galeri."
+                : "Explorer is for PC/Desktop. On mobile, media is stored in your Downloads / Gallery.",
+            "info"
+        );
+        return;
+    }
     try {
         const payload = folderPath ? { folder_path: folderPath } : {};
         const resp = await fetch("/api/open-folder", {
@@ -2179,17 +2213,17 @@ async function openSystemFolder(folderPath = null) {
             body: JSON.stringify(payload)
         });
         const res = await resp.json();
-        if (resp.ok) {
+        if (resp.ok && res.success !== false) {
             const cleanPath = res.folder_path || folderPath || "downloads";
             if (navigator.clipboard) {
                 navigator.clipboard.writeText(cleanPath).catch(() => {});
             }
             showToast(currentLang === "id" ? `Membuka folder di Windows Explorer: ${cleanPath}` : `Opened folder in Windows Explorer: ${cleanPath}`, "success");
         } else {
-            throw new Error(res.detail || "Gagal membuka folder");
+            showToast(res.message || res.detail || "Fitur Buka Explorer hanya aktif di Desktop lokal.", "info");
         }
     } catch (err) {
-        showToast(err.message, "error");
+        showToast(err.message || "Gagal membuka folder", "error");
     }
 }
 
