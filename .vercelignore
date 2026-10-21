@@ -1,0 +1,10 @@
+venv/
+.venv/
+downloads/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+.vscode/
+.idea/
+settings.json

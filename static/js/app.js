@@ -840,6 +840,210 @@ async function downloadSelected(type) {
 }
 
 // ==========================================
+// MOBILE LOCALSTORAGE VAULT & DIRECT DOWNLOAD
+// ==========================================
+const MOBILE_VAULT_KEY = "in_donlotin_mobile_vault";
+
+function isMobileDevice() {
+    return window.innerWidth <= 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
+function getMobileVaultItems() {
+    try {
+        const raw = localStorage.getItem(MOBILE_VAULT_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        console.error("Error reading mobile vault from localStorage:", e);
+        return [];
+    }
+}
+
+function saveToMobileVault(item) {
+    try {
+        const current = getMobileVaultItems();
+        const filtered = current.filter(x => x.folder_name !== item.folder_name && x.id !== item.id);
+        filtered.unshift(item);
+        if (filtered.length > 50) filtered.length = 50;
+        localStorage.setItem(MOBILE_VAULT_KEY, JSON.stringify(filtered));
+        updateMobileVaultUI();
+    } catch (e) {
+        console.error("Error saving to mobile vault:", e);
+    }
+}
+
+function removeFromMobileVault(identifier) {
+    try {
+        const current = getMobileVaultItems();
+        const filtered = current.filter(x => x.id !== identifier && x.folder_name !== identifier);
+        localStorage.setItem(MOBILE_VAULT_KEY, JSON.stringify(filtered));
+        updateMobileVaultUI();
+    } catch (e) {
+        console.error("Error removing from mobile vault:", e);
+    }
+}
+
+function clearMobileVault() {
+    try {
+        localStorage.removeItem(MOBILE_VAULT_KEY);
+        updateMobileVaultUI();
+        refreshDownloadsList();
+        showToast(currentLang === "id" ? "Penyimpanan LocalStorage HP berhasil dikosongkan." : "Mobile LocalStorage vault cleared.", "info");
+    } catch (e) {
+        console.error("Error clearing mobile vault:", e);
+    }
+}
+
+function clearMobileVaultPrompt() {
+    const items = getMobileVaultItems();
+    if (items.length === 0) {
+        showToast(currentLang === "id" ? "Penyimpanan LocalStorage HP sudah kosong." : "Mobile vault is already empty.", "info");
+        return;
+    }
+    if (confirm(currentLang === "id" ? `Kosongkan ${items.length} riwayat media dari penyimpanan LocalStorage HP?` : `Clear ${items.length} items from mobile storage?`)) {
+        clearMobileVault();
+    }
+}
+
+function updateMobileVaultUI() {
+    const items = getMobileVaultItems();
+    const countBadge = document.getElementById("mobile-vault-badge");
+    const mobDockCount = document.getElementById("mobile-folder-count");
+    if (countBadge) countBadge.textContent = `${items.length} File`;
+    if (mobDockCount) {
+        const total = items.length + (allLoadedFolders ? allLoadedFolders.filter(x => !x.is_mobile_vault).length : 0);
+        mobDockCount.textContent = total;
+        if (total > 0) mobDockCount.classList.remove("hidden");
+        else mobDockCount.classList.add("hidden");
+    }
+}
+
+async function downloadDirectToDevice() {
+    if (!currentPostData) {
+        showToast(currentLang === "id" ? "Silakan muat dan periksa link konten terlebih dahulu." : "Please preview media first.", "error");
+        return;
+    }
+
+    const platform = currentPostData.platform || "media";
+    const shortcode = currentPostData.shortcode || ("item_" + Date.now());
+    const isVideo = currentPostData.is_video ?? true;
+    const author = currentPostData.author || "Creator";
+    const title = currentPostData.title || currentPostData.caption_summary || "Media " + platform;
+
+    const indices = Array.from(selectedSlideIndices);
+    const isMultiCarousel = currentPostData.content_type === "carousel" && indices.length > 1;
+
+    let directMediaUrl = "";
+    if (currentPostData.items && currentPostData.items.length > 0) {
+        const firstIdx = (indices.length > 0) ? (indices[0] - 1) : 0;
+        const targetItem = currentPostData.items[firstIdx] || currentPostData.items[0];
+        if (targetItem) {
+            directMediaUrl = targetItem.video_url || targetItem.display_url || "";
+        }
+    }
+    if (!directMediaUrl && currentPostData.download_url) {
+        directMediaUrl = currentPostData.download_url;
+    }
+
+    const ext = isVideo ? "mp4" : "jpg";
+    const fileName = `${platform}_${shortcode}.${ext}`;
+
+    const btn = document.getElementById("btn-save-device");
+    const origHtml = btn ? btn.innerHTML : "";
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="material-symbols-outlined text-lg animate-spin">sync</span> Mengunduh ke HP...`;
+    }
+
+    try {
+        let finalDownloadUrl = "";
+        let playableUrl = "";
+
+        if (isMultiCarousel || !directMediaUrl || platform.toLowerCase() === "youtube") {
+            const naming = document.getElementById("single-naming-format")?.value || "datetime";
+            const saveCaption = document.getElementById("single-save-caption")?.checked ?? true;
+
+            const resp = await fetch("/api/download-zip", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: currentPostData.url,
+                    selected_indices: indices,
+                    naming_format: naming,
+                    save_caption: saveCaption
+                })
+            });
+
+            if (!resp.ok) {
+                const err = await resp.json();
+                throw new Error(err.detail || "Gagal mengunduh media.");
+            }
+
+            const blob = await resp.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = `${platform}_${shortcode}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
+
+            finalDownloadUrl = blobUrl;
+            playableUrl = (currentPostData.items && currentPostData.items[0]?.video_url) || (currentPostData.items && currentPostData.items[0]?.display_url) || "";
+        } else {
+            finalDownloadUrl = `/api/download-file?url=${encodeURIComponent(directMediaUrl)}&filename=${encodeURIComponent(fileName)}`;
+            playableUrl = directMediaUrl;
+
+            const a = document.createElement("a");
+            a.href = finalDownloadUrl;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        const vaultEntry = {
+            id: "mob_" + Date.now(),
+            folder_name: `${platform}_${shortcode}`,
+            title: title,
+            author: author,
+            platform: platform,
+            created_str: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
+            created_time: Date.now() / 1000,
+            thumbnail: (currentPostData.items && currentPostData.items[0]?.display_url) 
+                ? `/api/proxy-media?url=${encodeURIComponent(currentPostData.items[0].display_url)}` 
+                : (currentPostData.thumbnail ? `/api/proxy-media?url=${encodeURIComponent(currentPostData.thumbnail)}` : null),
+            caption_text: currentPostData.caption || "",
+            file_count: isMultiCarousel ? indices.length : 1,
+            total_files: isMultiCarousel ? indices.length : 1,
+            is_mobile_vault: true,
+            files: [
+                {
+                    name: isMultiCarousel ? `${platform}_${shortcode}.zip` : fileName,
+                    type: isVideo ? "video" : "image",
+                    size_human: isMultiCarousel ? "ZIP Archive" : (isVideo ? "HD Video" : "HD Photo"),
+                    url: playableUrl ? `/api/proxy-media?url=${encodeURIComponent(playableUrl)}` : finalDownloadUrl,
+                    download_url: finalDownloadUrl
+                }
+            ]
+        };
+
+        saveToMobileVault(vaultEntry);
+        showToast(currentLang === "id" ? "Unduhan dimulai! Disimpan ke memori HP & LocalStorage Vault." : "Download started! Saved to phone & Mobile Vault.", "success");
+        refreshDownloadsList();
+    } catch (err) {
+        showToast(err.message, "error");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
+
+// ==========================================
 // BATCH DOWNLOADER
 // ==========================================
 function updateBatchUrlCount() {
@@ -1353,11 +1557,23 @@ async function startBatchDownload() {
 // ==========================================
 async function refreshDownloadsList() {
     try {
-        const resp = await fetch("/api/downloads");
-        const data = await resp.json();
+        let serverFolders = [];
+        let baseDir = "downloads";
+        try {
+            const resp = await fetch("/api/downloads");
+            const data = await resp.json();
+            serverFolders = data.folders || [];
+            baseDir = data.output_dir || "downloads";
+        } catch (e) {
+            console.warn("Could not fetch server downloads, using local/cache:", e);
+        }
 
-        allLoadedFolders = data.folders || [];
-        const baseDir = data.output_dir || "downloads";
+        const mobileVaultItems = getMobileVaultItems();
+        const serverNames = new Set(serverFolders.map(f => f.folder_name));
+        const uniqueMobileItems = mobileVaultItems.filter(m => !serverNames.has(m.folder_name));
+
+        // Combine: mobile items first, then server folders
+        allLoadedFolders = [...uniqueMobileItems, ...serverFolders];
 
         // Update indicators
         const sidebarPath = document.getElementById("sidebar-storage-path");
@@ -1367,12 +1583,9 @@ async function refreshDownloadsList() {
 
         if (sidebarPath) sidebarPath.textContent = baseDir.replace(/\\/g, '/').split('/').pop() || "downloads";
         if (sidebarCount) sidebarCount.textContent = allLoadedFolders.length;
-        const mobileCount = document.getElementById("mobile-folder-count");
-        if (mobileCount) {
-            mobileCount.textContent = allLoadedFolders.length;
-            if (allLoadedFolders.length > 0) mobileCount.classList.remove("hidden");
-            else mobileCount.classList.add("hidden");
-        }
+        
+        updateMobileVaultUI();
+
         if (vaultCount) vaultCount.textContent = `${allLoadedFolders.length} Folder`;
         if (bentoCount) bentoCount.textContent = `${allLoadedFolders.length} Folder`;
 
@@ -1555,6 +1768,7 @@ function renderVaultList() {
         let previewThumb = null;
         const imgFile = f.files.find(item => item.type === 'image');
         if (imgFile) previewThumb = imgFile.url;
+        if (!previewThumb && f.thumbnail) previewThumb = f.thumbnail;
 
         let platformTag = "MEDIA";
         let platformColor = "bg-slate-900";
@@ -1589,17 +1803,25 @@ function renderVaultList() {
                         </div>
                     </div>
 
-                    <!-- Platform Tag Pill -->
-                    <span class="absolute top-2.5 left-2.5 px-2 py-0.5 rounded text-[10px] font-bold text-white font-label-mono-sm tracking-wider ${platformColor} shadow-md">
-                        ${platformTag}
-                    </span>
+                    <!-- Platform & Storage Tag Pills -->
+                    <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold text-white font-label-mono-sm tracking-wider ${platformColor} shadow-md">
+                            ${platformTag}
+                        </span>
+                        ${f.is_mobile_vault ? `
+                            <span class="px-1.5 py-0.5 rounded text-[9px] font-bold text-white bg-blue-600 shadow-md flex items-center gap-0.5">
+                                <span class="material-symbols-outlined text-[11px]">smartphone</span>
+                                <span>HP STORAGE</span>
+                            </span>
+                        ` : ''}
+                    </div>
 
                     <!-- Checkbox for Batch Selection -->
                     <label class="absolute top-2.5 right-2.5 z-20 flex items-center justify-center w-7 h-7 rounded-lg ${isSelected ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/70 backdrop-blur-md border-white/30 text-white'} border cursor-pointer hover:scale-105 transition-all shadow-md select-none" onclick="event.stopPropagation();">
                         <input type="checkbox"
-                               class="w-4 h-4 rounded text-blue-600 bg-white/20 border-white/40 focus:ring-secondary cursor-pointer"
-                               ${isSelected ? 'checked' : ''}
-                               onchange="toggleVaultFolderSelection('${escapedName}', this.checked)"/>
+                                class="w-4 h-4 rounded text-blue-600 bg-white/20 border-white/40 focus:ring-secondary cursor-pointer"
+                                ${isSelected ? 'checked' : ''}
+                                onchange="toggleVaultFolderSelection('${escapedName}', this.checked)"/>
                     </label>
 
                     <span class="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded text-[10px] font-semibold bg-black/75 text-white backdrop-blur-xs font-label-mono-sm">
@@ -1626,13 +1848,19 @@ function renderVaultList() {
                     <span>Putar & Lihat</span>
                 </button>
                 <div class="flex items-center gap-1">
-                    <button onclick="shareVaultFolderToPhone('${escapedName}')" class="p-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all cursor-pointer" title="Kirim ke HP via QR Code">
-                        <span class="material-symbols-outlined text-lg">phonelink_ring</span>
-                    </button>
-                    <button onclick="openSystemFolderByIndex(${realIdx})" class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg transition-all cursor-pointer" title="Buka di Windows Explorer">
-                        <span class="material-symbols-outlined text-lg">folder_open</span>
-                    </button>
-                    <button onclick="deleteFolderByIndex(${realIdx})" class="p-2 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer" title="Hapus Folder">
+                    ${f.is_mobile_vault ? `
+                        <button onclick="downloadDirectFromVaultByIndex(${realIdx})" class="p-2 text-blue-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all cursor-pointer" title="Unduh Ulang ke HP">
+                            <span class="material-symbols-outlined text-lg">download</span>
+                        </button>
+                    ` : `
+                        <button onclick="shareVaultFolderToPhone('${escapedName}')" class="p-2 text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-all cursor-pointer" title="Kirim ke HP via QR Code">
+                            <span class="material-symbols-outlined text-lg">phonelink_ring</span>
+                        </button>
+                        <button onclick="openSystemFolderByIndex(${realIdx})" class="p-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-lg transition-all cursor-pointer" title="Buka di Windows Explorer">
+                            <span class="material-symbols-outlined text-lg">folder_open</span>
+                        </button>
+                    `}
+                    <button onclick="deleteFolderByIndex(${realIdx})" class="p-2 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer" title="Hapus Item">
                         <span class="material-symbols-outlined text-lg">delete</span>
                     </button>
                 </div>
@@ -1807,9 +2035,29 @@ function confirmBatchDeleteVault() {
     refreshIcons();
 }
 
+function downloadDirectFromVaultByIndex(index) {
+    if (!allLoadedFolders || !allLoadedFolders[index]) return;
+    const item = allLoadedFolders[index];
+    const dlFile = (item.files && item.files.length > 0) ? item.files[0] : null;
+    const downloadUrl = (dlFile && dlFile.download_url) ? dlFile.download_url : (dlFile ? dlFile.url : null);
+    if (!downloadUrl) {
+        showToast(currentLang === "id" ? "Tautan unduhan tidak tersedia." : "Download link unavailable.", "error");
+        return;
+    }
+    const a = document.createElement("a");
+    a.href = downloadUrl;
+    a.download = (dlFile && dlFile.name) ? dlFile.name : `${item.folder_name}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    showToast(currentLang === "id" ? "Mengunduh ulang ke perangkat..." : "Re-downloading to device...", "info");
+}
+
 function deleteFolderByIndex(index) {
     if (allLoadedFolders && allLoadedFolders[index]) {
-        openDeleteModal(allLoadedFolders[index].folder_path, allLoadedFolders[index].folder_name);
+        const item = allLoadedFolders[index];
+        const path = item.is_mobile_vault ? 'mobile_vault' : item.folder_path;
+        openDeleteModal(path, item.folder_name);
     }
 }
 
@@ -1846,27 +2094,43 @@ async function executeDeleteFolder() {
             const folderPaths = [];
             allLoadedFolders.forEach(f => {
                 if (selectedVaultFolderNames.has(f.folder_name)) {
-                    folderPaths.push(f.folder_path);
+                    if (f.is_mobile_vault) {
+                        removeFromMobileVault(f.folder_name);
+                    } else if (f.folder_path) {
+                        folderPaths.push(f.folder_path);
+                    }
                 }
             });
 
-            const resp = await fetch("/api/delete-folders-batch", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ folder_paths: folderPaths })
-            });
-            const res = await resp.json();
-            if (resp.ok) {
-                closeDeleteModal();
-                selectedVaultFolderNames.clear();
-                updateVaultSelectionUI();
-                showToast(currentLang === "id" ? `${res.deleted_count} folder berhasil dihapus permanen.` : `${res.deleted_count} folders deleted permanently.`, "success");
-                refreshDownloadsList();
-            } else {
-                throw new Error(res.detail || "Gagal menghapus folder.");
+            if (folderPaths.length > 0) {
+                const resp = await fetch("/api/delete-folders-batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ folder_paths: folderPaths })
+                });
+                const res = await resp.json();
+                if (!resp.ok) {
+                    throw new Error(res.detail || "Gagal menghapus folder.");
+                }
             }
+            closeDeleteModal();
+            selectedVaultFolderNames.clear();
+            updateVaultSelectionUI();
+            showToast(currentLang === "id" ? "Item terpilih berhasil dihapus." : "Selected items deleted.", "success");
+            refreshDownloadsList();
         } else {
             if (!pendingDeletePath) return;
+            if (pendingDeletePath === 'mobile_vault') {
+                removeFromMobileVault(pendingDeleteName);
+                if (pendingDeleteName) {
+                    selectedVaultFolderNames.delete(pendingDeleteName);
+                }
+                closeDeleteModal();
+                updateVaultSelectionUI();
+                showToast(currentLang === "id" ? "Media berhasil dihapus dari LocalStorage HP." : "Media deleted from mobile storage.", "success");
+                refreshDownloadsList();
+                return;
+            }
             const folderPath = pendingDeletePath;
             const resp = await fetch("/api/delete-folder", {
                 method: "POST",

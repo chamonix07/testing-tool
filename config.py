@@ -1,10 +1,13 @@
 import os
 import json
+import tempfile
 
-SETTINGS_FILE = "settings.json"
+IS_VERCEL = bool(os.environ.get("VERCEL"))
+SETTINGS_FILE = os.path.join(tempfile.gettempdir(), "settings.json") if IS_VERCEL else "settings.json"
+DEFAULT_DOWNLOADS = os.path.join(tempfile.gettempdir(), "downloads") if IS_VERCEL else os.path.abspath("downloads")
 
 DEFAULT_SETTINGS = {
-    "output_dir": os.path.abspath("downloads"),
+    "output_dir": DEFAULT_DOWNLOADS,
     "naming_format": "datetime",  # "datetime", "content_name", "datetime_content"
     "save_caption": True,
     "session_id": "",
@@ -24,6 +27,9 @@ def load_settings():
 def save_settings(new_settings):
     current = load_settings()
     current.update(new_settings)
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(current, f, indent=4)
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(current, f, indent=4)
+    except Exception:
+        pass
     return current

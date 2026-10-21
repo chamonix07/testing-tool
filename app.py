@@ -276,6 +276,34 @@ def proxy_media(url: str = Query(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/download-file")
+def download_file(url: str = Query(...), filename: Optional[str] = Query(None)):
+    """Direct stream download for mobile browsers and Vercel cloud deployment."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.google.com/"
+        }
+        resp = requests.get(url, headers=headers, stream=True, timeout=30)
+        content_type = resp.headers.get("content-type", "application/octet-stream")
+        safe_name = sanitize_archive_name(filename) if filename else "media_download"
+        if "." not in safe_name:
+            if "video" in content_type or ".mp4" in url:
+                safe_name += ".mp4"
+            elif "image" in content_type or ".jpg" in url or ".jpeg" in url:
+                safe_name += ".jpg"
+            elif "audio" in content_type or ".mp3" in url:
+                safe_name += ".mp3"
+            else:
+                safe_name += ".bin"
+
+        response_headers = {
+            "Content-Disposition": f'attachment; filename="{safe_name}"'
+        }
+        return StreamingResponse(resp.iter_content(chunk_size=1024 * 64), media_type=content_type, headers=response_headers)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/downloads")
 def list_downloads():
     settings = config.load_settings()
@@ -687,6 +715,9 @@ async def open_folder(
 
     opened = False
     err_msg = ""
+
+    if os.environ.get("VERCEL"):
+        return {"success": False, "message": "Fitur Buka Folder Explorer hanya tersedia saat dijalankan lokal di Desktop Windows.", "is_cloud": True}
 
     if sys.platform == "win32":
         try:

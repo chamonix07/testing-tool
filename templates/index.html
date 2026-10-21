@@ -248,40 +248,11 @@
                         </div>
                         <span class="text-base font-extrabold tracking-tight text-on-surface">IN DONLOTiN</span>
                     </div>
-                    <div class="hidden lg:flex items-center gap-2 text-on-surface-variant">
-                        <span class="text-[11px] font-bold px-2 py-0.5 rounded bg-surface-container border border-outline-variant/40 text-secondary font-label-mono-sm">UNIVERSAL</span>
-                        <span class="text-xs font-label-mono-sm text-on-surface-variant/80">Batch Multi-Thread Daemon 2.4.0</span>
+                    <div class="hidden lg:flex items-center gap-2">
+                        <span class="text-base font-extrabold tracking-tight text-on-surface">IN DONLOTiN</span>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20 font-label-mono-sm">UNIVERSAL</span>
                     </div>
                 </div>
-
-                <!-- Live System & Environment Telemetry Badge -->
-                <button type="button" onclick="openTelemetryModal()" class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-container/70 hover:bg-surface-container border border-outline-variant/30 text-xs font-semibold cursor-pointer transition-all shadow-xs group" title="Lihat Detail IP, Perangkat, Lokasi & Cuaca">
-                    <!-- Weather & Location Chip -->
-                    <div class="flex items-center gap-1.5 text-on-surface">
-                        <span id="nav-weather-icon" class="material-symbols-outlined text-amber-500 text-base">wb_sunny</span>
-                        <span id="nav-weather-temp" class="font-bold">--°C</span>
-                        <span class="text-outline hidden sm:inline">•</span>
-                        <span id="nav-location" class="text-on-surface-variant hidden sm:inline truncate max-w-[120px]">Memuat...</span>
-                    </div>
-
-                    <span class="w-px h-3.5 bg-outline-variant/40 hidden md:inline"></span>
-
-                    <!-- IP Chip -->
-                    <div class="hidden md:flex items-center gap-1 font-mono text-[11px] text-on-surface-variant">
-                        <span class="material-symbols-outlined text-xs text-blue-400">lan</span>
-                        <span id="nav-ip" class="font-bold text-secondary">--</span>
-                    </div>
-
-                    <span class="w-px h-3.5 bg-outline-variant/40 hidden xl:inline"></span>
-
-                    <!-- Device Chip -->
-                    <div class="hidden xl:flex items-center gap-1 text-[11px] text-on-surface-variant">
-                        <span class="material-symbols-outlined text-xs text-indigo-400">devices</span>
-                        <span id="nav-device" class="truncate max-w-[100px]">--</span>
-                    </div>
-
-                    <span class="material-symbols-outlined text-sm text-outline group-hover:text-secondary transition-colors">expand_more</span>
-                </button>
 
                 <!-- Trailing Actions Cluster -->
                 <div class="flex items-center gap-2">
@@ -537,20 +508,30 @@
                                     </div>
                                 </div>
 
-                                <!-- Main Execution Action Bar (Simpan ke Komputer, Unduh MP3, Unduh ZIP) -->
-                                <div class="pt-4 border-t border-outline-variant/20 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-                                    <button onclick="downloadSelected('folder')" id="btn-save-folder" class="flex-1 py-3.5 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-button-text font-bold flex items-center justify-center gap-2 shadow-lg glow-indigo active:scale-[0.98] transition-all cursor-pointer">
-                                        <span class="material-symbols-outlined text-xl">download</span>
-                                        <span id="btn-save-folder-text">Simpan ke Komputer</span>
-                                    </button>
-                                    <button onclick="downloadAudioOnly()" id="btn-save-audio" class="py-3.5 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-500 font-button-text font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer" title="Ekstrak Audio MP3 Kualitas 320kbps">
-                                        <span class="material-symbols-outlined text-xl">music_note</span>
-                                        <span>Unduh MP3</span>
-                                    </button>
-                                    <button onclick="downloadSelected('zip')" id="btn-save-zip" class="py-3.5 px-4 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 text-on-surface font-button-text font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer" title="Unduh Paket Arsip ZIP">
-                                        <span class="material-symbols-outlined text-xl text-secondary">folder_zip</span>
-                                        <span>Unduh ZIP</span>
-                                    </button>
+                                <!-- Main Execution Action Bar (Unduh ke HP, Simpan ke Komputer, Unduh MP3, Unduh ZIP) -->
+                                <div class="pt-4 border-t border-outline-variant/20 flex flex-col gap-2.5">
+                                    <div class="flex flex-col sm:flex-row items-stretch gap-2.5">
+                                        <!-- Primary Direct Download Button (Ideal for Mobile / Browser Direct Save) -->
+                                        <button onclick="downloadDirectToDevice()" id="btn-save-device" class="flex-1 py-3.5 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-button-text font-bold flex items-center justify-center gap-2 shadow-lg glow-indigo active:scale-[0.98] transition-all cursor-pointer">
+                                            <span class="material-symbols-outlined text-xl">phone_iphone</span>
+                                            <span id="btn-save-device-text">Unduh ke HP / Perangkat</span>
+                                        </button>
+                                        <!-- PC Server Disk Save Button -->
+                                        <button onclick="downloadSelected('folder')" id="btn-save-folder" class="py-3.5 px-4 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 text-on-surface font-button-text font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer" title="Simpan ke Folder Penyimpanan Komputer">
+                                            <span class="material-symbols-outlined text-xl text-secondary">computer</span>
+                                            <span id="btn-save-folder-text" class="hidden sm:inline">Simpan ke PC</span>
+                                        </button>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2.5">
+                                        <button onclick="downloadAudioOnly()" id="btn-save-audio" class="py-3 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-500 font-button-text font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer" title="Ekstrak Audio MP3 Kualitas 320kbps">
+                                            <span class="material-symbols-outlined text-xl">music_note</span>
+                                            <span>Unduh MP3</span>
+                                        </button>
+                                        <button onclick="downloadSelected('zip')" id="btn-save-zip" class="py-3 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 text-on-surface font-button-text font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer" title="Unduh Paket Arsip ZIP">
+                                            <span class="material-symbols-outlined text-xl text-secondary">folder_zip</span>
+                                            <span>Unduh ZIP</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -804,6 +785,28 @@
                     </div>
                 </div>
 
+                <!-- Mobile LocalStorage Vault Banner -->
+                <div id="mobile-vault-banner" class="bg-blue-600/10 border border-blue-500/20 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg bg-blue-600/20 text-blue-500 flex items-center justify-center shrink-0">
+                            <span class="material-symbols-outlined text-xl">phone_iphone</span>
+                        </div>
+                        <div>
+                            <div class="font-bold text-on-surface flex items-center gap-2">
+                                <span>Penyimpanan Mobile LocalStorage</span>
+                                <span id="mobile-vault-badge" class="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full font-label-mono-sm">0 File</span>
+                            </div>
+                            <p class="text-[11px] text-on-surface-variant mt-0.5">Media yang diunduh langsung tersimpan di browser HP dan dapat diputar offline kapan saja.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                        <button type="button" onclick="clearMobileVaultPrompt()" class="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-rose-500/10 text-rose-500 text-xs font-semibold border border-rose-500/20 cursor-pointer transition-colors flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">delete</span>
+                            <span>Bersihkan Storage HP</span>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- FILTER & SEARCH TOOLBAR -->
                 <div class="bg-surface-container-low border border-outline-variant/30 rounded-xl p-3.5 flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between shadow-xs">
                     <!-- Search Input -->
@@ -925,22 +928,23 @@
         <!-- ============================================== -->
         <!-- MOBILE BOTTOM NAVIGATION DOCK (md:hidden) -->
         <!-- ============================================== -->
-        <nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center py-2 px-3 bg-surface-container-low/95 backdrop-blur-lg border-t border-outline-variant/30 shadow-lg md:hidden">
-            <button onclick="switchTab('single')" id="mobile-tab-single" class="mobile-nav-btn flex flex-col items-center justify-center text-secondary py-1 px-3 rounded-xl cursor-pointer">
-                <span class="material-symbols-outlined text-xl">cloud_download</span>
-                <span class="font-label-mono-sm text-[10px] font-semibold">Fetch</span>
+        <nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center py-2 px-2 bg-surface-container-low/95 backdrop-blur-xl border-t border-outline-variant/30 shadow-2xl md:hidden pb-[max(0.6rem,env(safe-area-inset-bottom))]">
+            <button onclick="switchTab('single')" id="mobile-tab-single" class="mobile-nav-btn flex flex-col items-center justify-center text-blue-500 py-1.5 px-3 rounded-xl cursor-pointer transition-all active:scale-95">
+                <span class="material-symbols-outlined text-2xl">cloud_download</span>
+                <span class="font-label-mono-sm text-[10px] font-bold mt-0.5">Unduh</span>
             </button>
-            <button onclick="switchTab('batch')" id="mobile-tab-batch" class="mobile-nav-btn flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface py-1 px-3 rounded-xl cursor-pointer">
-                <span class="material-symbols-outlined text-xl">layers</span>
-                <span class="font-label-mono-sm text-[10px] font-semibold">Batch</span>
+            <button onclick="switchTab('batch')" id="mobile-tab-batch" class="mobile-nav-btn flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface py-1.5 px-3 rounded-xl cursor-pointer transition-all active:scale-95">
+                <span class="material-symbols-outlined text-2xl">layers</span>
+                <span class="font-label-mono-sm text-[10px] font-bold mt-0.5">Batch</span>
             </button>
-            <button onclick="switchTab('downloads')" id="mobile-tab-downloads" class="mobile-nav-btn flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface py-1 px-3 rounded-xl cursor-pointer">
-                <span class="material-symbols-outlined text-xl">video_library</span>
-                <span class="font-label-mono-sm text-[10px] font-semibold">Vault</span>
+            <button onclick="switchTab('downloads')" id="mobile-tab-downloads" class="mobile-nav-btn relative flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface py-1.5 px-3 rounded-xl cursor-pointer transition-all active:scale-95">
+                <span class="material-symbols-outlined text-2xl">folder_special</span>
+                <span id="mobile-folder-count" class="hidden absolute top-0.5 right-2 px-1.5 py-0.2 bg-blue-600 text-white text-[9px] font-bold rounded-full shadow-xs">0</span>
+                <span class="font-label-mono-sm text-[10px] font-bold mt-0.5">Tersimpan</span>
             </button>
-            <button onclick="switchTab('settings')" id="mobile-tab-settings" class="mobile-nav-btn flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface py-1 px-3 rounded-xl cursor-pointer">
-                <span class="material-symbols-outlined text-xl">settings</span>
-                <span class="font-label-mono-sm text-[10px] font-semibold">Config</span>
+            <button onclick="switchTab('settings')" id="mobile-tab-settings" class="mobile-nav-btn flex flex-col items-center justify-center text-on-surface-variant hover:text-on-surface py-1.5 px-3 rounded-xl cursor-pointer transition-all active:scale-95">
+                <span class="material-symbols-outlined text-2xl">settings</span>
+                <span class="font-label-mono-sm text-[10px] font-bold mt-0.5">Setelan</span>
             </button>
         </nav>
 
