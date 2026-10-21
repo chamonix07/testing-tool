@@ -759,6 +759,9 @@ async def open_folder(
     path: Optional[str] = Query(None),
     folder_path: Optional[str] = Query(None)
 ):
+    if os.environ.get("VERCEL"):
+        return {"success": False, "message": "Fitur Buka Folder Explorer hanya tersedia saat dijalankan lokal di Desktop Windows.", "is_cloud": True}
+
     target_raw = path or folder_path
     if request.method == "POST":
         try:
@@ -772,14 +775,14 @@ async def open_folder(
     target = target_raw or settings.get("output_dir", os.path.abspath("downloads"))
     clean_target = os.path.normpath(os.path.abspath(target))
 
-    if not os.path.exists(clean_target):
-        os.makedirs(clean_target, exist_ok=True)
+    try:
+        if not os.path.exists(clean_target):
+            os.makedirs(clean_target, exist_ok=True)
+    except Exception:
+        pass
 
     opened = False
     err_msg = ""
-
-    if os.environ.get("VERCEL"):
-        return {"success": False, "message": "Fitur Buka Folder Explorer hanya tersedia saat dijalankan lokal di Desktop Windows.", "is_cloud": True}
 
     if sys.platform == "win32":
         try:
