@@ -13,13 +13,15 @@ from datetime import datetime
 from typing import List, Optional
 import requests
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import config
 from media_service import MediaService
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def sanitize_archive_name(name: str) -> str:
     """Removes emojis and problematic characters for broad zip compatibility on Windows & mobile."""
@@ -31,14 +33,34 @@ def sanitize_archive_name(name: str) -> str:
 app = FastAPI(title="IN DONLOtiN", description="Universal Media Downloader powered by IN")
 
 downloads_dir = config.load_settings().get("output_dir", os.path.abspath("downloads"))
-os.makedirs(downloads_dir, exist_ok=True)
-os.makedirs("static", exist_ok=True)
-os.makedirs("templates", exist_ok=True)
+try:
+    os.makedirs(downloads_dir, exist_ok=True)
+except Exception:
+    pass
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+static_dir = os.path.join(BASE_DIR, "static")
+if not os.path.exists(static_dir) and os.path.exists(os.path.join(BASE_DIR, "public", "static")):
+    static_dir = os.path.join(BASE_DIR, "public", "static")
+
+templates_dir = os.path.join(BASE_DIR, "templates")
+
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 app.mount("/downloaded-media", StaticFiles(directory=downloads_dir, check_dir=False), name="downloaded-media")
 
-templates = Jinja2Templates(directory="templates")
+@app.get("/favicon.ico")
+def get_favicon():
+    for fav_path in [
+        os.path.join(BASE_DIR, "public", "favicon.ico"),
+        os.path.join(BASE_DIR, "static", "favicon.ico"),
+        os.path.join(BASE_DIR, "public", "favicon.svg"),
+        os.path.join(BASE_DIR, "static", "favicon.svg")
+    ]:
+        if os.path.exists(fav_path):
+            media_type = "image/svg+xml" if fav_path.endswith(".svg") else "image/x-icon"
+            return FileResponse(fav_path, media_type=media_type)
+    return Response(status_code=204)
+
+templates = Jinja2Templates(directory=templates_dir)
 
 current_settings = config.load_settings()
 media_service = MediaService(session_id=current_settings.get("session_id"))

@@ -4,6 +4,8 @@
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
     <title>IN DONLOTiN - Universal Media Downloader</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg"/>
+    <link rel="alternate icon" href="/favicon.ico"/>
     
     <!-- Google Fonts: Inter, Plus Jakarta Sans, JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -1282,6 +1284,6 @@
     </div>
 
     <!-- Main JavaScript Application Logic -->
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js" onerror="if(!this.dataset.retried){this.dataset.retried='1';this.src='/public/static/js/app.js';}"></script>
 </body>
 </html>
