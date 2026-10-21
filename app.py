@@ -100,7 +100,28 @@ class DeleteFolderRequest(BaseModel):
 class BatchDeleteFolderRequest(BaseModel):
     folder_paths: List[str]
 
+@app.middleware("http")
+async def vercel_path_fix_middleware(request: Request, call_next):
+    """Ensure Vercel serverless function rewrites preserve the original client path."""
+    matched = request.headers.get("x-matched-path")
+    path = request.scope.get("path", "")
+    
+    if matched and not matched.startswith("/api/index"):
+        request.scope["path"] = matched
+    elif path in ["/api/index.py", "/api/index", "/api", "/api/"]:
+        request.scope["path"] = "/"
+    elif path.startswith("/api/index.py/"):
+        request.scope["path"] = path[len("/api/index.py"):]
+    elif path.startswith("/api/index/"):
+        request.scope["path"] = path[len("/api/index"):]
+
+    return await call_next(request)
+
 @app.get("/", response_class=HTMLResponse)
+@app.get("/api", response_class=HTMLResponse)
+@app.get("/api/", response_class=HTMLResponse)
+@app.get("/api/index", response_class=HTMLResponse)
+@app.get("/api/index.py", response_class=HTMLResponse)
 async def read_root(request: Request):
     return templates.TemplateResponse(request=request, name="index.html")
 
