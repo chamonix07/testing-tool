@@ -498,7 +498,7 @@ class MediaService:
             'js_runtimes': {'node': {}},
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web', 'mweb', 'android', 'ios']
+                    'player_client': ['web_embedded', 'android', 'mweb']
                 }
             }
         }
@@ -524,10 +524,6 @@ class MediaService:
             # Auto: If cookies.txt exists and has content, use it!
             if cookies_path and os.path.exists(cookies_path) and os.path.getsize(cookies_path) > 10:
                 ydl_opts['cookiefile'] = cookies_path
-            else:
-                installed = config.get_installed_browsers()
-                if "firefox" in installed:
-                    ydl_opts['cookiesfrombrowser'] = ("firefox",)
 
         # Format specification
         if format_id:
@@ -598,12 +594,16 @@ class MediaService:
                     err_str = str(second_err).lower()
 
             # Handle bot detection / login required
-            if "sign in" in err_str or "confirm you're not a bot" in err_str or "--cookies" in err_str or "login" in err_str:
-                # Try fallback client
+            if "sign in" in err_str or "confirm you're not a bot" in err_str or "--cookies" in err_str or "login" in err_str or "requested format is not available" in err_str:
+                # Try fallback client without any cookies and with web_embedded
                 opts_fallback = dict(ydl_opts)
+                if 'cookiesfrombrowser' in opts_fallback:
+                    del opts_fallback['cookiesfrombrowser']
+                if 'cookiefile' in opts_fallback:
+                    del opts_fallback['cookiefile']
                 opts_fallback['extractor_args'] = {
                     'youtube': {
-                        'player_client': ['android', 'ios', 'mweb']
+                        'player_client': ['web_embedded', 'android', 'mweb']
                     }
                 }
                 try:
@@ -707,13 +707,15 @@ class MediaService:
     def download(
         self,
         post_info: Dict[str, Any],
-        selected_indices: Optional[List[int]],
-        format_id: Optional[str],
-        output_base_dir: str,
-        naming_format: str,
+        selected_indices: Optional[List[int]] = None,
+        format_id: Optional[str] = "1080p",
+        output_base_dir: Optional[str] = None,
+        naming_format: str = "datetime",
         save_caption: bool = True
     ) -> Dict[str, Any]:
         """Fast download engine that always saves thumbnail.jpg for video/audio folders."""
+        if not output_base_dir:
+            output_base_dir = config.load_settings().get("output_dir", os.path.abspath("downloads"))
         platform = post_info.get("platform", "other")
         platform_folder = post_info.get("platform_name", "Downloads")
         
