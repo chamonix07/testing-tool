@@ -329,6 +329,11 @@ def download_single(
                 if f.endswith(".mp3"):
                     target_file = os.path.join(folder_path, f)
                     break
+            if not target_file:
+                for f in os.listdir(folder_path):
+                    if f.endswith(".m4a") or f.endswith(".opus") or f.endswith(".aac") or f.endswith(".ogg"):
+                        target_file = os.path.join(folder_path, f)
+                        break
         else:
             for f in os.listdir(folder_path):
                 if not f.endswith(".txt") and not f.endswith(".jpg"):
@@ -348,6 +353,10 @@ def download_single(
         media_ext = os.path.splitext(target_file)[1].lower()
         if media_ext == ".mp3":
             media_type = "audio/mpeg"
+        elif media_ext == ".m4a":
+            media_type = "audio/mp4"
+        elif media_ext in [".opus", ".ogg"]:
+            media_type = "audio/ogg"
         elif media_ext == ".mp4":
             media_type = "video/mp4"
         elif media_ext in [".jpg", ".jpeg"]:

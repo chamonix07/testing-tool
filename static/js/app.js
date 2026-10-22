@@ -1003,12 +1003,21 @@ async function downloadDirectToDevice() {
             const singleExt = (selectedFormatId === "audio_mp3") ? "mp3" : (isVideo ? "mp4" : "jpg");
             const targetDownloadUrl = `/api/download-single?url=${encodeURIComponent(currentPostData.url)}&format_id=${encodeURIComponent(selectedFormatId)}`;
             
+            const resp = await fetch(targetDownloadUrl);
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: "Gagal mengunduh media dari server." }));
+                throw new Error(err.detail || "Gagal mengunduh media dari server.");
+            }
+
+            const blob = await resp.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
-            a.href = targetDownloadUrl;
+            a.href = blobUrl;
             a.download = `${platform}_${shortcode}.${singleExt}`;
             document.body.appendChild(a);
             a.click();
             a.remove();
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 15000);
 
             finalDownloadUrl = targetDownloadUrl;
             playableUrl = (currentPostData.items && currentPostData.items[0]?.video_url) || (currentPostData.items && currentPostData.items[0]?.display_url) || "";

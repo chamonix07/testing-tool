@@ -3,6 +3,7 @@ import re
 import json
 import time
 import html
+import shutil
 import subprocess
 import unicodedata
 from datetime import datetime
@@ -488,6 +489,7 @@ class MediaService:
         settings = config.load_settings()
         cookies_mode = settings.get("cookies_mode", "auto")
         cookies_browser = settings.get("cookies_browser", "firefox")
+        has_ffmpeg = bool(shutil.which('ffmpeg'))
 
         ydl_opts: Dict[str, Any] = {
             'quiet': True,
@@ -498,7 +500,7 @@ class MediaService:
             'js_runtimes': {'node': {}},
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['web_embedded', 'android', 'mweb']
+                    'player_client': ['visionos', 'android', 'web']
                 }
             }
         }
@@ -525,47 +527,40 @@ class MediaService:
             if cookies_path and os.path.exists(cookies_path) and os.path.getsize(cookies_path) > 10:
                 ydl_opts['cookiefile'] = cookies_path
 
-        # Format specification
+        # Format specification with resilient fallbacks
         if format_id:
             if format_id == "audio_mp3":
-                ydl_opts.update({
-                    'format': 'bestaudio/best',
-                    'postprocessors': [{
+                ydl_opts['format'] = 'bestaudio/best'
+                if has_ffmpeg:
+                    ydl_opts['postprocessors'] = [{
                         'key': 'FFmpegExtractAudio',
                         'preferredcodec': 'mp3',
                         'preferredquality': '320',
                     }]
-                })
             elif format_id in ["1440p", "2k"]:
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
-                    'merge_output_format': 'mp4'
-                })
+                ydl_opts['format'] = 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/bestvideo+bestaudio/best'
+                if has_ffmpeg:
+                    ydl_opts['merge_output_format'] = 'mp4'
             elif format_id == "1080p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
-                    'merge_output_format': 'mp4'
-                })
+                ydl_opts['format'] = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/best'
+                if has_ffmpeg:
+                    ydl_opts['merge_output_format'] = 'mp4'
             elif format_id == "720p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
-                    'merge_output_format': 'mp4'
-                })
+                ydl_opts['format'] = 'bestvideo[height<=720]+bestaudio/best[height<=720]/bestvideo+bestaudio/best'
+                if has_ffmpeg:
+                    ydl_opts['merge_output_format'] = 'mp4'
             elif format_id == "480p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=480]+bestaudio/best[height<=480]/best',
-                    'merge_output_format': 'mp4'
-                })
+                ydl_opts['format'] = 'bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo+bestaudio/best'
+                if has_ffmpeg:
+                    ydl_opts['merge_output_format'] = 'mp4'
             elif format_id == "360p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=360]+bestaudio/best[height<=360]/best',
-                    'merge_output_format': 'mp4'
-                })
+                ydl_opts['format'] = 'bestvideo[height<=360]+bestaudio/best[height<=360]/18/best'
+                if has_ffmpeg:
+                    ydl_opts['merge_output_format'] = 'mp4'
             else:  # best_video
-                ydl_opts.update({
-                    'format': 'bestvideo+bestaudio/best',
-                    'merge_output_format': 'mp4'
-                })
+                ydl_opts['format'] = 'bestvideo+bestaudio/best'
+                if has_ffmpeg:
+                    ydl_opts['merge_output_format'] = 'mp4'
 
         return ydl_opts
 
@@ -579,10 +574,13 @@ class MediaService:
         except Exception as first_err:
             err_str = str(first_err).lower()
 
-            # Handle browser cookies extraction failure (locked database, DPAPI decryption, etc.)
+            # 1. Handle browser cookies extraction failure (locked database, DPAPI decryption, etc.)
             if 'cookiesfrombrowser' in ydl_opts and ('cookie' in err_str or 'dpapi' in err_str or 'database' in err_str or 'permission denied' in err_str):
                 opts_retry = dict(ydl_opts)
                 del opts_retry['cookiesfrombrowser']
+                c_path = config.get_cookies_path()
+                if c_path and os.path.exists(c_path) and os.path.getsize(c_path) > 10:
+                    opts_retry['cookiefile'] = c_path
                 try:
                     with yt_dlp.YoutubeDL(opts_retry) as ydl:
                         if download:
@@ -593,27 +591,49 @@ class MediaService:
                     first_err = second_err
                     err_str = str(second_err).lower()
 
-            # Handle bot detection / login required
-            if "sign in" in err_str or "confirm you're not a bot" in err_str or "--cookies" in err_str or "login" in err_str or "requested format is not available" in err_str:
-                # Try fallback client without any cookies and with web_embedded
-                opts_fallback = dict(ydl_opts)
-                if 'cookiesfrombrowser' in opts_fallback:
-                    del opts_fallback['cookiesfrombrowser']
-                if 'cookiefile' in opts_fallback:
-                    del opts_fallback['cookiefile']
-                opts_fallback['extractor_args'] = {
-                    'youtube': {
-                        'player_client': ['web_embedded', 'android', 'mweb']
-                    }
-                }
+            # 2. Handle requested format not available (DO NOT treat as bot/login wall!)
+            if "requested format is not available" in err_str:
+                opts_fmt = dict(ydl_opts)
+                if 'postprocessors' in opts_fmt:
+                    opts_fmt['format'] = 'bestaudio/best'
+                else:
+                    opts_fmt['format'] = 'bestvideo+bestaudio/best[ext=mp4]/best/18'
                 try:
-                    with yt_dlp.YoutubeDL(opts_fallback) as ydl:
+                    with yt_dlp.YoutubeDL(opts_fmt) as ydl:
                         if download:
                             return ydl.download([url])
                         else:
                             return ydl.extract_info(url, download=False)
-                except Exception:
-                    pass
+                except Exception as fmt_err:
+                    first_err = fmt_err
+                    err_str = str(fmt_err).lower()
+
+            # 3. Handle bot detection / login required
+            if "sign in" in err_str or "confirm you're not a bot" in err_str or "--cookies" in err_str or "login" in err_str:
+                # Try fallback clients: android, then ios, then mweb
+                for fallback_client in [['android'], ['ios'], ['mweb']]:
+                    opts_fallback = dict(ydl_opts)
+                    if 'cookiesfrombrowser' in opts_fallback:
+                        del opts_fallback['cookiesfrombrowser']
+                    if 'cookiefile' in opts_fallback:
+                        del opts_fallback['cookiefile']
+                    opts_fallback['extractor_args'] = {
+                        'youtube': {
+                            'player_client': fallback_client
+                        }
+                    }
+                    if 'postprocessors' in opts_fallback:
+                        opts_fallback['format'] = 'bestaudio/best'
+                    else:
+                        opts_fallback['format'] = 'bestvideo+bestaudio/best[ext=mp4]/best/18'
+                    try:
+                        with yt_dlp.YoutubeDL(opts_fallback) as ydl:
+                            if download:
+                                return ydl.download([url])
+                            else:
+                                return ydl.extract_info(url, download=False)
+                    except Exception:
+                        continue
 
                 raise RuntimeError(
                     "YouTube/Platform mewajibkan otentikasi login ('Sign in use --cookies-from-browser or --cookie'). "
@@ -748,12 +768,78 @@ class MediaService:
             out_template = os.path.join(target_dir, "%(title).50s.%(ext)s")
             ydl_opts = self._build_ydl_opts(format_id=format_id, out_template=out_template)
             download_target_url = self.sanitize_youtube_url(post_info["url"]) if platform == "youtube" else post_info["url"]
-            self._execute_ytdlp(download_target_url, ydl_opts, download=True)
+            
+            download_ok = False
+            try:
+                self._execute_ytdlp(download_target_url, ydl_opts, download=True)
+                download_ok = True
+            except Exception as dl_err:
+                # Check if file was actually downloaded despite error
+                existing = [f for f in os.listdir(target_dir) if not f.endswith(".txt") and not f.endswith(".jpg")]
+                if existing:
+                    download_ok = True
+                elif platform == "youtube":
+                    # Resilient Fallback: Extract direct stream URL via Android client & stream directly!
+                    try:
+                        opts_android = {
+                            'quiet': True,
+                            'extractor_args': {'youtube': {'player_client': ['android']}},
+                        }
+                        with yt_dlp.YoutubeDL(opts_android) as ydl_stream:
+                            stream_info = ydl_stream.extract_info(download_target_url, download=False)
+                            formats = stream_info.get("formats", [])
+                            # Find format 18 (mp4 360p with audio) or any valid progressive stream url
+                            target_fmt = next((f for f in formats if f.get("format_id") == "18" and f.get("url")), None)
+                            if not target_fmt:
+                                target_fmt = next((f for f in formats if f.get("url") and f.get("vcodec") != "none"), None)
+                            if not target_fmt:
+                                target_fmt = next((f for f in formats if f.get("url")), None)
+                            
+                            if target_fmt and target_fmt.get("url"):
+                                s_url = target_fmt["url"]
+                                s_title = self.sanitize_filename(stream_info.get("title", "media"), max_length=50)
+                                fallback_file = os.path.join(target_dir, f"{s_title}.mp4")
+                                
+                                resp = self.session.get(s_url, stream=True, timeout=60)
+                                if resp.status_code == 200:
+                                    with open(fallback_file, "wb") as f_out:
+                                        for chunk in resp.iter_content(chunk_size=1024 * 256):
+                                            if chunk:
+                                                f_out.write(chunk)
+                                    download_ok = True
+                    except Exception:
+                        pass
+                
+                if not download_ok:
+                    raise dl_err
+
+            # If user requested MP3 extraction for YouTube or other video
+            if format_id == "audio_mp3":
+                mp3_exists = any(f.endswith(".mp3") for f in os.listdir(target_dir))
+                if not mp3_exists:
+                    for f in os.listdir(target_dir):
+                        if f.endswith(".mp4") or f.endswith(".webm") or f.endswith(".m4a"):
+                            src_p = os.path.join(target_dir, f)
+                            mp3_p = os.path.splitext(src_p)[0] + ".mp3"
+                            if shutil.which("ffmpeg"):
+                                try:
+                                    subprocess.run(
+                                        ["ffmpeg", "-i", src_p, "-vn", "-b:a", "320k", mp3_p, "-y"],
+                                        capture_output=True,
+                                        timeout=60
+                                    )
+                                    if os.path.exists(mp3_p) and os.path.getsize(mp3_p) > 100:
+                                        try:
+                                            os.remove(src_p)
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
 
             for f in os.listdir(target_dir):
-                if not f.endswith(".txt") and os.path.join(target_dir, f) not in downloaded_files:
-                    downloaded_files.append(os.path.join(target_dir, f))
-                    downloaded_files.append(os.path.join(target_dir, f))
+                abs_p = os.path.join(target_dir, f)
+                if not f.endswith(".txt") and abs_p not in downloaded_files:
+                    downloaded_files.append(abs_p)
 
         else:
             # Direct media downloads (Instagram Carousel, Twitter photos, Pinterest images, etc.)
