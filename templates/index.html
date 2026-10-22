@@ -909,6 +909,77 @@
                             <input type="password" id="setting-session-id" placeholder="Cookie sessionid (opsional)" class="w-full p-2.5 bg-surface-container-lowest border border-outline-variant/40 rounded-xl font-label-mono-sm text-on-surface focus:border-secondary focus:ring-1 focus:ring-secondary outline-hidden transition-all"/>
                         </div>
 
+                        <!-- SECTION: yt-dlp & Platform Cookies Authentication -->
+                        <div class="pt-4 border-t border-outline-variant/20 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-secondary text-lg">cookie</span>
+                                    <span class="font-bold text-on-surface">Otentikasi & Cookies yt-dlp (YouTube / IG / Bot Bypass)</span>
+                                </div>
+                                <span id="cookies-status-badge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                    Memeriksa...
+                                </span>
+                            </div>
+                            <p class="text-[11px] text-on-surface-variant leading-relaxed">
+                                Gunakan cookies untuk melewati verifikasi bot YouTube <em>("Sign in to confirm you're not a bot / use --cookies-from-browser")</em> atau mengunduh media dari akun Instagram tertutup/video berbatas usia.
+                            </p>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                <div>
+                                    <label class="block font-semibold text-on-surface mb-1">Mode Cookies:</label>
+                                    <select id="setting-cookies-mode" onchange="onCookiesModeChange()" class="w-full bg-surface-container border border-outline-variant/40 rounded-xl p-2.5 text-xs text-on-surface focus:border-secondary focus:ring-1 focus:ring-secondary cursor-pointer font-medium">
+                                        <option value="auto">Otomatis (cookies.txt / Browser Otomatis)</option>
+                                        <option value="file">File cookies.txt (Upload / Paste Manual)</option>
+                                        <option value="browser">Cookies Browser Langsung (--cookies-from-browser)</option>
+                                        <option value="none">Tanpa Cookies (Mode Tamu Standar)</option>
+                                    </select>
+                                </div>
+                                <div id="setting-browser-select-container">
+                                    <label class="block font-semibold text-on-surface mb-1">Pilih Browser (untuk cookies):</label>
+                                    <select id="setting-cookies-browser" class="w-full bg-surface-container border border-outline-variant/40 rounded-xl p-2.5 text-xs text-on-surface focus:border-secondary focus:ring-1 focus:ring-secondary cursor-pointer font-medium">
+                                        <option value="firefox">Mozilla Firefox (Paling Stabil / Tanpa DPAPI)</option>
+                                        <option value="edge">Microsoft Edge</option>
+                                        <option value="chrome">Google Chrome</option>
+                                        <option value="brave">Brave Browser</option>
+                                        <option value="opera">Opera</option>
+                                        <option value="vivaldi">Vivaldi</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Cookies File / Text Actions -->
+                            <div class="bg-surface-container-lowest p-3.5 rounded-xl border border-outline-variant/30 space-y-2.5 mt-2">
+                                <div class="flex items-center justify-between flex-wrap gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="material-symbols-outlined text-xs text-secondary">description</span>
+                                        <span id="cookies-file-info" class="text-[11px] font-mono text-on-surface font-semibold">cookies.txt: Belum Ada</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <input type="file" id="cookies-file-input" accept=".txt" class="hidden" onchange="uploadCookiesFile(event)"/>
+                                        <button type="button" onclick="document.getElementById('cookies-file-input').click()" class="px-3 py-1.5 rounded-lg bg-surface-container hover:bg-surface-container-high border border-outline-variant/40 text-on-surface text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer">
+                                            <span class="material-symbols-outlined text-sm text-secondary">upload_file</span>
+                                            <span>Upload cookies.txt</span>
+                                        </button>
+                                        <button type="button" id="btn-delete-cookies" onclick="deleteCookiesFile()" class="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer hidden">
+                                            <span class="material-symbols-outlined text-sm">delete</span>
+                                            <span>Hapus</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block font-semibold text-on-surface mb-1">Atau Paste Isi Netscape Cookies:</label>
+                                    <textarea id="setting-cookies-text" rows="3" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;1799999999&#9;SID&#9;..." class="w-full p-2.5 bg-surface-container border border-outline-variant/40 rounded-xl font-label-mono-sm text-[11px] text-on-surface focus:border-secondary focus:ring-1 focus:ring-secondary outline-hidden transition-all resize-y"></textarea>
+                                    <div class="flex items-center justify-between mt-1">
+                                        <p class="text-[10px] text-on-surface-variant">Tips: Ekspor cookies YouTube/IG dengan ekstensi browser <em>"Get cookies.txt LOCALLY"</em>.</p>
+                                        <button type="button" onclick="saveCookiesFromTextarea()" class="px-3 py-1 bg-secondary/15 hover:bg-secondary/25 border border-secondary/30 text-secondary text-xs font-semibold rounded-lg transition-all cursor-pointer">
+                                            Simpan Teks Cookies
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="pt-4 flex items-center justify-between border-t border-outline-variant/20">
                             <span id="settings-status-msg" class="text-xs text-tertiary font-semibold"></span>
                             <div class="flex items-center gap-2">

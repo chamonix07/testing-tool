@@ -703,7 +703,11 @@ function downloadAudioOnly() {
     if (!currentPostData) return;
     selectedFormatId = "audio_mp3";
     selectVideoFormat("audio_mp3");
-    downloadSelected('folder');
+    if (isMobileDevice()) {
+        downloadDirectToDevice();
+    } else {
+        downloadSelected('folder');
+    }
 }
 
 // ==========================================
@@ -771,6 +775,7 @@ async function downloadSelected(type) {
                 body: JSON.stringify({
                     url: url,
                     selected_indices: indices,
+                    format_id: selectedFormatId,
                     naming_format: naming,
                     save_caption: saveCaption
                 })
@@ -960,7 +965,7 @@ async function downloadDirectToDevice() {
         let finalDownloadUrl = "";
         let playableUrl = "";
 
-        if (isMultiCarousel || !directMediaUrl || platform.toLowerCase() === "youtube") {
+        if (isMultiCarousel) {
             const naming = document.getElementById("single-naming-format")?.value || "datetime";
             const saveCaption = document.getElementById("single-save-caption")?.checked ?? true;
 
@@ -970,6 +975,7 @@ async function downloadDirectToDevice() {
                 body: JSON.stringify({
                     url: currentPostData.url,
                     selected_indices: indices,
+                    format_id: selectedFormatId,
                     naming_format: naming,
                     save_caption: saveCaption
                 })
@@ -991,6 +997,20 @@ async function downloadDirectToDevice() {
             setTimeout(() => window.URL.revokeObjectURL(blobUrl), 10000);
 
             finalDownloadUrl = blobUrl;
+            playableUrl = (currentPostData.items && currentPostData.items[0]?.video_url) || (currentPostData.items && currentPostData.items[0]?.display_url) || "";
+        } else if (selectedFormatId === "audio_mp3" || platform.toLowerCase() === "youtube" || !directMediaUrl) {
+            // Direct single media stream (MP3 or MP4) directly to mobile device
+            const singleExt = (selectedFormatId === "audio_mp3") ? "mp3" : (isVideo ? "mp4" : "jpg");
+            const targetDownloadUrl = `/api/download-single?url=${encodeURIComponent(currentPostData.url)}&format_id=${encodeURIComponent(selectedFormatId)}`;
+            
+            const a = document.createElement("a");
+            a.href = targetDownloadUrl;
+            a.download = `${platform}_${shortcode}.${singleExt}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+
+            finalDownloadUrl = targetDownloadUrl;
             playableUrl = (currentPostData.items && currentPostData.items[0]?.video_url) || (currentPostData.items && currentPostData.items[0]?.display_url) || "";
         } else {
             finalDownloadUrl = `/api/download-file?url=${encodeURIComponent(directMediaUrl)}&filename=${encodeURIComponent(fileName)}`;
@@ -2395,6 +2415,8 @@ async function loadSettings() {
         const batchNaming = document.getElementById("batch-naming-format");
         const session = document.getElementById("setting-session-id");
         const maxBatch = document.getElementById("setting-max-batch");
+        const cookiesMode = document.getElementById("setting-cookies-mode");
+        const cookiesBrowser = document.getElementById("setting-cookies-browser");
 
         if (outDir) outDir.value = settings.output_dir || "";
         if (naming) naming.value = settings.naming_format || "datetime";
@@ -2402,7 +2424,12 @@ async function loadSettings() {
         if (batchNaming) batchNaming.value = settings.naming_format || "datetime";
         if (session) session.value = settings.session_id || "";
         if (maxBatch) maxBatch.value = settings.max_batch_items || 20;
+        if (cookiesMode && settings.cookies_mode) cookiesMode.value = settings.cookies_mode;
+        if (cookiesBrowser && settings.cookies_browser) cookiesBrowser.value = settings.cookies_browser;
         window.currentMaxBatchItems = settings.max_batch_items || 20;
+
+        onCookiesModeChange();
+        loadCookiesStatus();
     } catch (err) {
         console.error("Gagal memuat pengaturan:", err);
     }
@@ -2414,6 +2441,8 @@ async function saveSettings(event) {
     const namingFormat = document.getElementById("setting-naming-format").value;
     const sessionId = document.getElementById("setting-session-id").value.trim();
     const maxBatchVal = parseInt(document.getElementById("setting-max-batch")?.value) || 20;
+    const cookiesMode = document.getElementById("setting-cookies-mode")?.value || "auto";
+    const cookiesBrowser = document.getElementById("setting-cookies-browser")?.value || "firefox";
     const msg = document.getElementById("settings-status-msg");
 
     try {
@@ -2424,7 +2453,9 @@ async function saveSettings(event) {
                 output_dir: outputDir,
                 naming_format: namingFormat,
                 session_id: sessionId,
-                max_batch_items: maxBatchVal
+                max_batch_items: maxBatchVal,
+                cookies_mode: cookiesMode,
+                cookies_browser: cookiesBrowser
             })
         });
 
@@ -2436,6 +2467,143 @@ async function saveSettings(event) {
             loadSettings();
         } else {
             throw new Error("Gagal menyimpan pengaturan.");
+        }
+    } catch (err) {
+        showToast(err.message, "error");
+    }
+}
+
+function onCookiesModeChange() {
+    const mode = document.getElementById("setting-cookies-mode")?.value;
+    const browserCont = document.getElementById("setting-browser-select-container");
+    if (browserCont) {
+        if (mode === "browser" || mode === "auto") {
+            browserCont.classList.remove("opacity-40", "pointer-events-none");
+        } else {
+            browserCont.classList.add("opacity-40", "pointer-events-none");
+        }
+    }
+}
+
+async function loadCookiesStatus() {
+    try {
+        const resp = await fetch("/api/settings/cookies-status");
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const badge = document.getElementById("cookies-status-badge");
+        const info = document.getElementById("cookies-file-info");
+        const btnDel = document.getElementById("btn-delete-cookies");
+
+        if (data.file_exists && data.lines_count > 0) {
+            if (badge) {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-500/15 text-green-400 border border-green-500/30";
+                badge.textContent = `cookies.txt Aktif (${data.lines_count} baris)`;
+            }
+            if (info) {
+                info.textContent = `cookies.txt: ${data.lines_count} baris cookies (~${Math.round(data.file_size / 1024 || 1)} KB)`;
+                info.className = "text-[11px] font-mono text-green-400 font-semibold";
+            }
+            if (btnDel) btnDel.classList.remove("hidden");
+        } else if (data.active_mode === "browser" || (data.active_mode === "auto" && data.installed_browsers && data.installed_browsers.length > 0)) {
+            const bName = data.active_browser || (data.installed_browsers ? data.installed_browsers[0] : "Browser");
+            if (badge) {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30";
+                badge.textContent = `Mode Browser (${bName})`;
+            }
+            if (info) {
+                info.textContent = `Menggunakan Cookies Browser: ${bName}`;
+                info.className = "text-[11px] font-mono text-blue-400 font-semibold";
+            }
+            if (btnDel) btnDel.classList.add("hidden");
+        } else {
+            if (badge) {
+                badge.className = "px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30";
+                badge.textContent = "Belum Ada Cookies (Mode Tamu)";
+            }
+            if (info) {
+                info.textContent = "cookies.txt: Belum Ada";
+                info.className = "text-[11px] font-mono text-on-surface-variant";
+            }
+            if (btnDel) btnDel.classList.add("hidden");
+        }
+
+        // Highlight installed browsers in select dropdown
+        const browserSelect = document.getElementById("setting-cookies-browser");
+        if (browserSelect && data.installed_browsers && data.installed_browsers.length > 0) {
+            const currentVal = browserSelect.value;
+            Array.from(browserSelect.options).forEach(opt => {
+                if (data.installed_browsers.includes(opt.value)) {
+                    if (!opt.text.includes("✓")) opt.text = "✓ " + opt.text;
+                }
+            });
+            if (currentVal) browserSelect.value = currentVal;
+        }
+    } catch (e) {
+        console.error("Error loading cookies status:", e);
+    }
+}
+
+async function uploadCookiesFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const resp = await fetch("/api/settings/upload-cookies", {
+            method: "POST",
+            body: formData
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || "Gagal mengunggah berkas cookies.");
+        }
+        showToast(currentLang === "id" ? "Berkas cookies.txt berhasil disimpan!" : "cookies.txt successfully uploaded!", "success");
+        loadCookiesStatus();
+    } catch (err) {
+        showToast(err.message, "error");
+    } finally {
+        event.target.value = "";
+    }
+}
+
+async function saveCookiesFromTextarea() {
+    const textEl = document.getElementById("setting-cookies-text");
+    const content = textEl ? textEl.value.trim() : "";
+    if (!content) {
+        showToast(currentLang === "id" ? "Silakan paste teks cookies terlebih dahulu." : "Please paste cookie text first.", "error");
+        return;
+    }
+
+    try {
+        const resp = await fetch("/api/settings/save-cookies-text", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content })
+        });
+        if (!resp.ok) {
+            const err = await resp.json();
+            throw new Error(err.detail || "Gagal menyimpan teks cookies.");
+        }
+        showToast(currentLang === "id" ? "Teks cookies berhasil disimpan ke cookies.txt!" : "Cookies saved to cookies.txt!", "success");
+        if (textEl) textEl.value = "";
+        loadCookiesStatus();
+    } catch (err) {
+        showToast(err.message, "error");
+    }
+}
+
+async function deleteCookiesFile() {
+    if (!confirm(currentLang === "id" ? "Hapus berkas cookies.txt yang tersimpan?" : "Delete saved cookies.txt?")) {
+        return;
+    }
+    try {
+        const resp = await fetch("/api/settings/delete-cookies", { method: "POST" });
+        if (resp.ok) {
+            showToast(currentLang === "id" ? "Berkas cookies.txt berhasil dihapus." : "cookies.txt deleted.", "info");
+            loadCookiesStatus();
         }
     } catch (err) {
         showToast(err.message, "error");

@@ -12,11 +12,12 @@ import subprocess
 from datetime import datetime
 from typing import List, Optional
 import requests
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.background import BackgroundTask
 from pydantic import BaseModel
 
 import config
@@ -99,6 +100,12 @@ class SettingsUpdate(BaseModel):
     save_caption: Optional[bool] = None
     session_id: Optional[str] = None
     max_batch_items: Optional[int] = None
+    cookies_mode: Optional[str] = None
+    cookies_browser: Optional[str] = None
+    cookies_file: Optional[str] = None
+
+class CookiesTextRequest(BaseModel):
+    content: str
 
 class OpenFolderRequest(BaseModel):
     folder_path: Optional[str] = None
@@ -239,7 +246,7 @@ def download_zip(req: DownloadRequest):
         if req.selected_indices:
             items_to_download = [it for it in items_to_download if it["index"] in req.selected_indices]
 
-        if not items_to_download:
+        if not items_to_download and post_info.get("platform") not in ["youtube", "tiktok", "other"]:
             raise HTTPException(status_code=400, detail="Tidak ada media yang dipilih untuk diunduh.")
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -274,6 +281,88 @@ def download_zip(req: DownloadRequest):
                 "Content-Disposition": f'attachment; filename="{zip_filename}"',
                 "Content-Length": str(len(zip_data))
             }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/download-single")
+def download_single(
+    url: str = Query(...),
+    format_id: Optional[str] = Query("1080p")
+):
+    """
+    Downloads a single media file (video or audio MP3) on-the-fly and streams it directly
+    to mobile device / browser so it saves directly as .mp4 or .mp3 without forcing a zip file.
+    """
+    try:
+        clean_url = url.strip()
+        post_info = media_service.get_info(clean_url)
+        platform = post_info.get("platform", "media")
+        shortcode = sanitize_archive_name(post_info.get("shortcode", "media"))
+        title = sanitize_archive_name(post_info.get("title", "")) or f"{platform}_{shortcode}"
+
+        # If direct media already exists and it's not mp3 extraction
+        is_mp3 = (format_id == "audio_mp3")
+        items = post_info.get("items", [])
+        if not is_mp3 and platform not in ["youtube", "tiktok", "other"] and items:
+            direct_url = items[0].get("download_url") or items[0].get("video_url") or items[0].get("display_url")
+            if direct_url:
+                ext = "mp4" if items[0].get("is_video") else "jpg"
+                filename = f"{title[:40]}.{ext}"
+                return download_file(url=direct_url, filename=filename)
+
+        # Download to temp directory
+        temp_dir = tempfile.mkdtemp()
+        res = media_service.download(
+            post_info=post_info,
+            format_id=format_id or "1080p",
+            output_base_dir=temp_dir,
+            naming_format="content_name",
+            save_caption=False
+        )
+
+        folder_path = res["folder_path"]
+        target_file = None
+
+        if is_mp3:
+            for f in os.listdir(folder_path):
+                if f.endswith(".mp3"):
+                    target_file = os.path.join(folder_path, f)
+                    break
+        else:
+            for f in os.listdir(folder_path):
+                if not f.endswith(".txt") and not f.endswith(".jpg"):
+                    target_file = os.path.join(folder_path, f)
+                    break
+
+        if not target_file:
+            for f in os.listdir(folder_path):
+                if not f.endswith(".txt"):
+                    target_file = os.path.join(folder_path, f)
+                    break
+
+        if not target_file or not os.path.exists(target_file):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise HTTPException(status_code=400, detail="Berkas media tidak ditemukan setelah pengunduhan.")
+
+        media_ext = os.path.splitext(target_file)[1].lower()
+        if media_ext == ".mp3":
+            media_type = "audio/mpeg"
+        elif media_ext == ".mp4":
+            media_type = "video/mp4"
+        elif media_ext in [".jpg", ".jpeg"]:
+            media_type = "image/jpeg"
+        else:
+            media_type = "application/octet-stream"
+
+        filename = f"{title[:40]}{media_ext}"
+        cleanup_task = BackgroundTask(lambda: shutil.rmtree(temp_dir, ignore_errors=True))
+
+        return FileResponse(
+            path=target_file,
+            filename=filename,
+            media_type=media_type,
+            background=cleanup_task
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -912,6 +1001,32 @@ def update_settings(req: SettingsUpdate):
     if "session_id" in updates:
         media_service.set_session_id(updates["session_id"])
     return {"success": True, "settings": updated}
+
+@app.get("/api/settings/cookies-status")
+def get_cookies_status_api():
+    return config.get_cookies_status()
+
+@app.post("/api/settings/save-cookies-text")
+def save_cookies_text_api(req: CookiesTextRequest):
+    if not req.content or not req.content.strip():
+        raise HTTPException(status_code=400, detail="Konten cookies kosong.")
+    config.save_cookies_text(req.content)
+    return {"success": True, "status": config.get_cookies_status()}
+
+@app.post("/api/settings/upload-cookies")
+async def upload_cookies_api(file: UploadFile = File(...)):
+    content = await file.read()
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+    config.save_cookies_text(text)
+    return {"success": True, "status": config.get_cookies_status()}
+
+@app.post("/api/settings/delete-cookies")
+def delete_cookies_api():
+    success = config.delete_cookies_file()
+    return {"success": success, "status": config.get_cookies_status()}
 
 if __name__ == "__main__":
     import uvicorn

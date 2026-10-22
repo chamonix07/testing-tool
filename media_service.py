@@ -10,6 +10,14 @@ from typing import List, Dict, Any, Optional
 import requests
 import yt_dlp
 
+try:
+    import yt_dlp.utils._jsruntime
+    # Node 20.x supports --experimental-permission which yt-dlp needs
+    yt_dlp.utils._jsruntime.NodeJsRuntime.MIN_SUPPORTED_VERSION = (20, 0, 0)
+except Exception:
+    pass
+
+import config
 from ig_service import InstagramService
 
 class MediaService:
@@ -471,25 +479,159 @@ class MediaService:
     def _extract_tiktok(self, url: str) -> Dict[str, Any]:
         return self._extract_generic(url, platform_name="TikTok", platform_icon="video")
 
+    def _build_ydl_opts(
+        self,
+        format_id: Optional[str] = None,
+        out_template: Optional[str] = None,
+        skip_download: bool = False
+    ) -> Dict[str, Any]:
+        settings = config.load_settings()
+        cookies_mode = settings.get("cookies_mode", "auto")
+        cookies_browser = settings.get("cookies_browser", "firefox")
+
+        ydl_opts: Dict[str, Any] = {
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'no_check_certificates': True,
+            'remote_components': ['ejs:github'],
+            'js_runtimes': {'node': {}},
+            'extractor_args': {
+                'youtube': {
+                    'player_client': ['web', 'mweb', 'android', 'ios']
+                }
+            }
+        }
+
+        if out_template:
+            ydl_opts['outtmpl'] = out_template
+            ydl_opts['concurrent_fragment_downloads'] = 6
+            ydl_opts['buffersize'] = 1024 * 1024 * 4
+            ydl_opts['http_chunk_size'] = 10485760
+
+        if skip_download:
+            ydl_opts['skip_download'] = True
+
+        # Attach cookies based on configuration
+        cookies_path = config.get_cookies_path()
+        if cookies_mode == "file":
+            if cookies_path and os.path.exists(cookies_path) and os.path.getsize(cookies_path) > 5:
+                ydl_opts['cookiefile'] = cookies_path
+        elif cookies_mode == "browser":
+            if cookies_browser:
+                ydl_opts['cookiesfrombrowser'] = (cookies_browser,)
+        elif cookies_mode == "auto":
+            # Auto: If cookies.txt exists and has content, use it!
+            if cookies_path and os.path.exists(cookies_path) and os.path.getsize(cookies_path) > 10:
+                ydl_opts['cookiefile'] = cookies_path
+            else:
+                installed = config.get_installed_browsers()
+                if "firefox" in installed:
+                    ydl_opts['cookiesfrombrowser'] = ("firefox",)
+
+        # Format specification
+        if format_id:
+            if format_id == "audio_mp3":
+                ydl_opts.update({
+                    'format': 'bestaudio/best',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '320',
+                    }]
+                })
+            elif format_id in ["1440p", "2k"]:
+                ydl_opts.update({
+                    'format': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
+                    'merge_output_format': 'mp4'
+                })
+            elif format_id == "1080p":
+                ydl_opts.update({
+                    'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
+                    'merge_output_format': 'mp4'
+                })
+            elif format_id == "720p":
+                ydl_opts.update({
+                    'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
+                    'merge_output_format': 'mp4'
+                })
+            elif format_id == "480p":
+                ydl_opts.update({
+                    'format': 'bestvideo[height<=480]+bestaudio/best[height<=480]/best',
+                    'merge_output_format': 'mp4'
+                })
+            elif format_id == "360p":
+                ydl_opts.update({
+                    'format': 'bestvideo[height<=360]+bestaudio/best[height<=360]/best',
+                    'merge_output_format': 'mp4'
+                })
+            else:  # best_video
+                ydl_opts.update({
+                    'format': 'bestvideo+bestaudio/best',
+                    'merge_output_format': 'mp4'
+                })
+
+        return ydl_opts
+
+    def _execute_ytdlp(self, url: str, ydl_opts: Dict[str, Any], download: bool = False) -> Any:
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                if download:
+                    return ydl.download([url])
+                else:
+                    return ydl.extract_info(url, download=False)
+        except Exception as first_err:
+            err_str = str(first_err).lower()
+
+            # Handle browser cookies extraction failure (locked database, DPAPI decryption, etc.)
+            if 'cookiesfrombrowser' in ydl_opts and ('cookie' in err_str or 'dpapi' in err_str or 'database' in err_str or 'permission denied' in err_str):
+                opts_retry = dict(ydl_opts)
+                del opts_retry['cookiesfrombrowser']
+                try:
+                    with yt_dlp.YoutubeDL(opts_retry) as ydl:
+                        if download:
+                            return ydl.download([url])
+                        else:
+                            return ydl.extract_info(url, download=False)
+                except Exception as second_err:
+                    first_err = second_err
+                    err_str = str(second_err).lower()
+
+            # Handle bot detection / login required
+            if "sign in" in err_str or "confirm you're not a bot" in err_str or "--cookies" in err_str or "login" in err_str:
+                # Try fallback client
+                opts_fallback = dict(ydl_opts)
+                opts_fallback['extractor_args'] = {
+                    'youtube': {
+                        'player_client': ['android', 'ios', 'mweb']
+                    }
+                }
+                try:
+                    with yt_dlp.YoutubeDL(opts_fallback) as ydl:
+                        if download:
+                            return ydl.download([url])
+                        else:
+                            return ydl.extract_info(url, download=False)
+                except Exception:
+                    pass
+
+                raise RuntimeError(
+                    "YouTube/Platform mewajibkan otentikasi login ('Sign in use --cookies-from-browser or --cookie'). "
+                    "Solusi: Buka menu 'Pengaturan' di aplikasi, pilih Cookies Browser (Firefox/Edge) atau upload file cookies.txt."
+                )
+
+            raise first_err
+
     def _extract_generic(
         self,
         url: str,
         platform_name: str = "Media",
         platform_icon: str = "play"
     ) -> Dict[str, Any]:
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-            'skip_download': True,
-            'noplaylist': True,
-            'no_check_certificates': True,
-            'socket_timeout': 5,
-            'js_runtimes': {'node': {}}
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                raise ValueError(f"Gagal mengambil metadata dari link {url}")
+        ydl_opts = self._build_ydl_opts(skip_download=True)
+        info = self._execute_ytdlp(url, ydl_opts, download=False)
+        if not info:
+            raise ValueError(f"Gagal mengambil metadata dari link {url}")
 
             title = info.get("title") or info.get("description") or "Video"
             author = info.get("uploader") or info.get("channel") or "Creator"
@@ -602,65 +744,13 @@ class MediaService:
         if post_info.get("is_video") and platform in ["youtube", "tiktok", "other"]:
             format_id = format_id or "1080p"
             out_template = os.path.join(target_dir, "%(title).50s.%(ext)s")
-
-            ydl_opts: Dict[str, Any] = {
-                'outtmpl': out_template,
-                'quiet': True,
-                'no_warnings': True,
-                'noplaylist': True,
-                'no_check_certificates': True,
-                'concurrent_fragment_downloads': 6,
-                'buffersize': 1024 * 1024 * 4,
-                'http_chunk_size': 10485760,
-                'js_runtimes': {'node': {}}
-            }
-
-            if format_id == "audio_mp3":
-                ydl_opts.update({
-                    'format': 'bestaudio/best',
-                    'postprocessors': [{
-                        'key': 'FFmpegExtractAudio',
-                        'preferredcodec': 'mp3',
-                        'preferredquality': '320',
-                    }]
-                })
-            elif format_id in ["1440p", "2k"]:
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
-                    'merge_output_format': 'mp4'
-                })
-            elif format_id == "1080p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
-                    'merge_output_format': 'mp4'
-                })
-            elif format_id == "720p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
-                    'merge_output_format': 'mp4'
-                })
-            elif format_id == "480p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=480]+bestaudio/best[height<=480]/best',
-                    'merge_output_format': 'mp4'
-                })
-            elif format_id == "360p":
-                ydl_opts.update({
-                    'format': 'bestvideo[height<=360]+bestaudio/best[height<=360]/best',
-                    'merge_output_format': 'mp4'
-                })
-            else: # best_video
-                ydl_opts.update({
-                    'format': 'bestvideo+bestaudio/best',
-                    'merge_output_format': 'mp4'
-                })
-
+            ydl_opts = self._build_ydl_opts(format_id=format_id, out_template=out_template)
             download_target_url = self.sanitize_youtube_url(post_info["url"]) if platform == "youtube" else post_info["url"]
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([download_target_url])
+            self._execute_ytdlp(download_target_url, ydl_opts, download=True)
 
             for f in os.listdir(target_dir):
                 if not f.endswith(".txt") and os.path.join(target_dir, f) not in downloaded_files:
+                    downloaded_files.append(os.path.join(target_dir, f))
                     downloaded_files.append(os.path.join(target_dir, f))
 
         else:

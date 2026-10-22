@@ -135,15 +135,35 @@ class InstagramService:
     def _fallback_ytdlp_info(self, url: str, shortcode: str) -> Dict[str, Any]:
         """Fallback extractor using yt-dlp for video/reels."""
         import yt_dlp
+        import config
+        cookies_path = config.get_cookies_path()
+        settings = config.load_settings()
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'skip_download': True
+            'skip_download': True,
+            'remote_components': ['ejs:github'],
+            'js_runtimes': {'node': {}}
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                raise ValueError("Tidak dapat mengekstrak media dengan yt-dlp")
+        if cookies_path and os.path.exists(cookies_path) and os.path.getsize(cookies_path) > 10:
+            ydl_opts['cookiefile'] = cookies_path
+        elif settings.get("cookies_mode") == "browser" and settings.get("cookies_browser"):
+            ydl_opts['cookiesfrombrowser'] = (settings.get("cookies_browser"),)
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except Exception:
+            # Retry without cookiesfrombrowser in case of database lock or dpapi
+            if 'cookiesfrombrowser' in ydl_opts:
+                del ydl_opts['cookiesfrombrowser']
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            else:
+                raise
+
+        if not info:
+            raise ValueError("Tidak dapat mengekstrak media dengan yt-dlp")
             
             author = info.get('uploader') or info.get('channel') or "instagram_user"
             caption = info.get('description') or info.get('title') or ""

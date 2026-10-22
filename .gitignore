@@ -10,6 +10,7 @@ __pycache__/
 # Local downloads & user data
 downloads/
 settings.json
+cookies.txt
 
 # Environment
 .env
