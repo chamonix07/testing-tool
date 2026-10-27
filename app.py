@@ -1044,5 +1044,9 @@ def delete_cookies_api():
 if __name__ == "__main__":
     import uvicorn
     host = os.environ.get("HOST", "0.0.0.0")
-    port = int(os.environ.get("PORT", 8000))
+    port_env = os.environ.get("PORT", "8000")
+    try:
+        port = int(port_env)
+    except (ValueError, TypeError):
+        port = 8000
     uvicorn.run("app:app", host=host, port=port, reload=False)
