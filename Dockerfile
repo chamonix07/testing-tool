@@ -24,6 +24,9 @@ COPY . .
 # Ensure storage directory exists
 RUN mkdir -p downloads
 
+# Install smart uvicorn wrapper so any direct uvicorn calls safely handle $PORT
+RUN cp uvicorn_wrapper.py /usr/local/bin/uvicorn && chmod +x /usr/local/bin/uvicorn
+
 # Railway will route incoming HTTP traffic to $PORT
 EXPOSE 8000
 

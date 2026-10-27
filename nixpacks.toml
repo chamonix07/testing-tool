@@ -2,7 +2,10 @@
 nixPkgs = ["ffmpeg", "python311", "curl"]
 
 [phases.install]
-cmds = ["pip install --no-cache-dir -r requirements.txt"]
+cmds = [
+  "pip install --no-cache-dir -r requirements.txt",
+  "python3 -c 'import shutil; p = shutil.which(\"uvicorn\"); p and open(p, \"w\").write(open(\"uvicorn_wrapper.py\").read())' || true"
+]
 
 [start]
 cmd = "python app.py"
