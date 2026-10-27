@@ -70,6 +70,10 @@ def get_favicon():
             return FileResponse(fav_path, media_type=media_type)
     return Response(status_code=204)
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "app": "IN DONLOTiN"}
+
 templates = Jinja2Templates(directory=templates_dir)
 
 current_settings = config.load_settings()
@@ -857,7 +861,7 @@ async def open_folder(
     path: Optional[str] = Query(None),
     folder_path: Optional[str] = Query(None)
 ):
-    if os.environ.get("VERCEL"):
+    if os.environ.get("VERCEL") or os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"):
         return {"success": False, "message": "Fitur Buka Folder Explorer hanya tersedia saat dijalankan lokal di Desktop Windows.", "is_cloud": True}
 
     target_raw = path or folder_path

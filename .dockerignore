@@ -10,3 +10,6 @@ downloads/
 .system_generated/
 scratch/
 settings.json
+mobile/
+*.zip
+.github/
