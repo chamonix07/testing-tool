@@ -35,6 +35,15 @@ def get_installed_browsers():
 
 def get_cookies_path():
     """Return path to active cookies.txt file if it exists and has content."""
+    # Check if cookies are supplied via environment variable (e.g. Railway / Cloud Variables)
+    env_cookies = os.environ.get("YOUTUBE_COOKIES") or os.environ.get("COOKIES_TEXT") or os.environ.get("COOKIES")
+    if env_cookies and (not os.path.exists(COOKIES_FILE) or os.path.getsize(COOKIES_FILE) < 10):
+        try:
+            with open(COOKIES_FILE, "w", encoding="utf-8") as f:
+                f.write(env_cookies.strip() + "\n")
+        except Exception:
+            pass
+
     settings = load_settings()
     custom_path = settings.get("cookies_file")
     if custom_path and os.path.isabs(custom_path) and os.path.exists(custom_path):

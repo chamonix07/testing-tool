@@ -5,10 +5,11 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=8000
 
-# Install ffmpeg, curl, and certificates needed for yt-dlp & media muxing
+# Install ffmpeg, curl, nodejs, and certificates needed for yt-dlp & media muxing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
+    nodejs \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 

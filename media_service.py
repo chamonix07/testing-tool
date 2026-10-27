@@ -610,13 +610,19 @@ class MediaService:
 
             # 3. Handle bot detection / login required
             if "sign in" in err_str or "confirm you're not a bot" in err_str or "--cookies" in err_str or "login" in err_str:
-                # Try fallback clients: android, then ios, then mweb
-                for fallback_client in [['android'], ['ios'], ['mweb']]:
+                c_path = config.get_cookies_path()
+                has_cookie = bool(c_path and os.path.exists(c_path) and os.path.getsize(c_path) > 10)
+
+                # Try fallback clients resilient to bot detection: visionos, android, tv, web_embedded, mweb
+                for fallback_client in [['visionos'], ['android'], ['tv'], ['web_embedded'], ['tv_simply'], ['mweb']]:
                     opts_fallback = dict(ydl_opts)
                     if 'cookiesfrombrowser' in opts_fallback:
                         del opts_fallback['cookiesfrombrowser']
-                    if 'cookiefile' in opts_fallback:
+                    if has_cookie:
+                        opts_fallback['cookiefile'] = c_path
+                    elif 'cookiefile' in opts_fallback:
                         del opts_fallback['cookiefile']
+
                     opts_fallback['extractor_args'] = {
                         'youtube': {
                             'player_client': fallback_client
@@ -636,8 +642,9 @@ class MediaService:
                         continue
 
                 raise RuntimeError(
-                    "YouTube/Platform mewajibkan otentikasi login ('Sign in use --cookies-from-browser or --cookie'). "
-                    "Solusi: Buka menu 'Pengaturan' di aplikasi, pilih Cookies Browser (Firefox/Edge) atau upload file cookies.txt."
+                    "YouTube mewajibkan otentikasi login / cookies ('Sign in to confirm you're not a bot'). "
+                    "Solusi: Buka menu 'Pengaturan' di aplikasi, lalu Upload file cookies.txt atau Paste teks Netscape cookies "
+                    "(atau tambahkan variabel YOUTUBE_COOKIES di dashboard Railway)."
                 )
 
             raise first_err
@@ -779,12 +786,16 @@ class MediaService:
                 if existing:
                     download_ok = True
                 elif platform == "youtube":
-                    # Resilient Fallback: Extract direct stream URL via Android client & stream directly!
+                    # Resilient Fallback: Extract direct stream URL via VisionOS/Android client & stream directly!
                     try:
+                        c_path = config.get_cookies_path()
+                        has_cookie = bool(c_path and os.path.exists(c_path) and os.path.getsize(c_path) > 10)
                         opts_android = {
                             'quiet': True,
-                            'extractor_args': {'youtube': {'player_client': ['android']}},
+                            'extractor_args': {'youtube': {'player_client': ['visionos', 'android']}},
                         }
+                        if has_cookie:
+                            opts_android['cookiefile'] = c_path
                         with yt_dlp.YoutubeDL(opts_android) as ydl_stream:
                             stream_info = ydl_stream.extract_info(download_target_url, download=False)
                             formats = stream_info.get("formats", [])
